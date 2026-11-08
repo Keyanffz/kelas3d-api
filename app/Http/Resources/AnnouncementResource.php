@@ -15,8 +15,11 @@ class AnnouncementResource extends JsonResource
         return [
             'id' => $this->id,
             'message' => $this->message,
+            // Nama pengirim; sama dengan `from` di event AnnouncementSent.
+            'from' => $this->user->name,
             // null = untuk semua kelas
             'classroom' => $this->classroom?->slug,
+            'for_all' => $this->classroom_id === null,
             'created_at' => $this->created_at,
         ];
     }

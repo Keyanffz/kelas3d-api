@@ -73,6 +73,26 @@ test('balasan heartbeat berisi pengumuman yang belum diterima agent', function (
     expect($lama->id)->toBeLessThan($semua->id);
 });
 
+test('anggota kelas mengambil pengumuman hari ini untuk kelasnya dan semua kelas', function () {
+    Announcement::factory()->create(['classroom_id' => $this->kelas->id, 'created_at' => '2026-11-08 10:00']);
+    $semua = Announcement::factory()->create(['classroom_id' => null, 'message' => 'Untuk semua']);
+    $kelasIni = Announcement::factory()->create(['classroom_id' => $this->kelas->id, 'message' => 'Untuk developer']);
+    $lain = Classroom::factory()->create(['slug' => 'data-science']);
+    Announcement::factory()->create(['classroom_id' => $lain->id]);
+
+    $this->actingAs($this->peserta)
+        ->getJson('/api/classrooms/developer/announcements')
+        ->assertOk()
+        ->assertJsonPath('data.*.id', [$kelasIni->id, $semua->id])
+        ->assertJsonPath('data.0.for_all', false)
+        ->assertJsonPath('data.0.classroom', 'developer')
+        ->assertJsonPath('data.1.for_all', true)
+        ->assertJsonPath('data.1.from', $semua->user->name);
+
+    $this->actingAs($this->peserta)->getJson('/api/classrooms/data-science/announcements')->assertForbidden();
+    $this->actingAs($this->koordinator)->getJson('/api/classrooms/data-science/announcements')->assertJsonCount(2, 'data');
+});
+
 // Angkat tangan
 
 test('peserta angkat tangan dan kelas diberi tahu', function () {

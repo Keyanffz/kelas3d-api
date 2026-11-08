@@ -61,9 +61,11 @@ class PresenceRecorder
     }
 
     /**
+     * Dipakai juga oleh kelas3d:simulasi untuk membuat anggota palsu keluar.
+     *
      * @param  array<string, mixed>  $report
      */
-    private function apply(Presence $presence, PresenceState $state, ?StateReason $reason, ?Classroom $classroom, array $report, CarbonInterface $at, bool $broadcast): Presence
+    public function apply(Presence $presence, PresenceState $state, ?StateReason $reason, ?Classroom $classroom, array $report, CarbonInterface $at, bool $broadcast): Presence
     {
         $out = $state === PresenceState::Keluar;
 

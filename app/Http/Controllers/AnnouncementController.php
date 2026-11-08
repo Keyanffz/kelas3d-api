@@ -7,9 +7,28 @@ use App\Http\Requests\AnnouncementRequest;
 use App\Http\Resources\AnnouncementResource;
 use App\Models\Announcement;
 use App\Models\Classroom;
+use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class AnnouncementController extends Controller
 {
+    /**
+     * Pengumuman hari ini.
+     *
+     * Koordinator dan anggota kelas itu. Berisi pengumuman untuk kelas ini dan untuk semua kelas, terbaru dulu,
+     * paling banyak 20. Dipakai web yang baru dibuka; pengumuman berikutnya datang lewat `AnnouncementSent`.
+     */
+    public function index(Classroom $classroom): AnonymousResourceCollection
+    {
+        return AnnouncementResource::collection(
+            Announcement::with(['user', 'classroom'])
+                ->where(fn ($query) => $query->whereNull('classroom_id')->orWhere('classroom_id', $classroom->id))
+                ->where('created_at', '>=', now()->startOfDay())
+                ->latest('id')
+                ->limit(20)
+                ->get()
+        );
+    }
+
     /**
      * Kirim pengumuman.
      *

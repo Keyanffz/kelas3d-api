@@ -74,6 +74,7 @@ Route::middleware('auth:web')->group(function () {
         Route::delete('schedules/{schedule}', [ScheduleController::class, 'destroy'])->can('update', 'classroom');
 
         Route::get('presences', [PresenceController::class, 'index'])->can('view', 'classroom');
+        Route::get('announcements', [AnnouncementController::class, 'index'])->can('view', 'classroom');
         Route::get('devices', [DeviceController::class, 'index'])->can('manageMembers', 'classroom');
 
         Route::get('members', [MemberController::class, 'index'])->can('manageMembers', 'classroom');

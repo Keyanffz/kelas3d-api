@@ -469,7 +469,13 @@ Siapa: koordinator.
 { "message": "Istirahat 15 menit, lanjut jam 10.30", "classroom": "developer" }
 ```
 
-`classroom` kosong atau `null` berarti untuk semua kelas. Respons 201: `{"data": {"id": 13, "message": "...", "classroom": "developer", "created_at": "..."}}`. Pengumuman dikirim sebagai `AnnouncementSent` ke web, dan ke agent lewat balasan heartbeat.
+`classroom` kosong atau `null` berarti untuk semua kelas. Respons 201: `{"data": {"id": 13, "message": "...", "from": "Koordinator", "classroom": "developer", "for_all": false, "created_at": "..."}}`. Pengumuman dikirim sebagai `AnnouncementSent` ke web, dan ke agent lewat balasan heartbeat.
+
+#### `GET /api/classrooms/{slug}/announcements`
+
+Siapa: koordinator dan anggota kelas itu.
+
+Pengumuman hari ini untuk kelas itu dan untuk semua kelas, terbaru dulu, maksimal 20. Bentuk tiap item sama dengan respons `POST /api/announcements`; `from` dan `for_all` sama dengan payload `AnnouncementSent`. Web memakainya saat halaman dibuka dan sesudah tersambung lagi ke Reverb, supaya pengumuman yang dikirim sebelumnya tetap tampil.
 
 ### Angkat tangan
 
@@ -630,6 +636,24 @@ composer dev
 ```
 
 Perintah ini menjalankan `serve` (port 8000), `queue:listen` (event broadcast lewat antrean), `pail` (log), `reverb:start` (port 8080), dan `schedule:work` (scheduler) sekaligus. Kalau mau dijalankan terpisah, kelimanya tetap harus nyala supaya realtime jalan.
+
+`serve` cuma mendengarkan di `127.0.0.1`. Supaya bisa dibuka dari laptop lain di jaringan yang sama, isi `SERVER_HOST=0.0.0.0` di `.env`. Reverb sudah mendengarkan di `0.0.0.0` dari awal (`REVERB_SERVER_HOST`). Langkah lengkap demo di jaringan kelas ada di `kelas3d-web/dokumentasi.md`.
+
+### Simulasi
+
+Anggota palsu yang keadaannya berubah-ubah, supaya web bisa dicek dengan banyak avatar tanpa banyak laptop. Cuma jalan di `APP_ENV=local`.
+
+```bash
+php artisan kelas3d:simulasi developer --jumlah=12
+php artisan kelas3d:simulasi data-science --jumlah=8 --istirahat=3
+php artisan kelas3d:simulasi developer --hapus
+```
+
+- Anggota palsu memakai email `sim-<slug>-<n>@simulasi.test`, nama dan avatar acak, dan kursi kosong pertama. Kalau kursi habis, sisanya tanpa kursi. Menjalankan ulang memakai anggota yang sama.
+- Semua mulai dari luar kelas lalu masuk bertahap. Tiap putaran, tiap anggota yang di kelas mengirim heartbeat lewat `PresenceRecorder`, dan sesekali ganti kegiatan: ngoding, vibe coding, ngolah data, browsing, main game, idle (istirahat karena idle), atau keluar. Sesekali juga angkat tangan, lalu ditangani dan selesai. Event `PresenceChanged` dan `HelpRequested` terkirim seperti biasa, dan sesinya tercatat di rekap.
+- Selama jalan, ada jadwal kelas sementara sepanjang hari ini, supaya bisa dicoba di luar jam kelas. `--istirahat=<menit>` menambah jam istirahat sementara mulai sekarang. Keduanya dihapus saat simulasi berhenti dengan Ctrl+C; sesudah itu scheduler membuat anggota palsu keluar kalau tidak ada jadwal kelas sungguhan.
+- `--interval` jeda antarputaran dalam detik (default 5), `--putaran` berhenti sesudah sekian putaran.
+- `--hapus` menghapus anggota palsu kelas itu beserta presence, sesi, dan permintaan bantuannya. Jalankan sebelum demo.
 
 ## Riwayat perubahan
 
@@ -795,3 +819,27 @@ File diubah:
 
 - `app/Http/Controllers/MemberController.php`: isi `commands.macos_linux`.
 - `tests/Feature/DeviceLoginTest.php`: perintah macOS dan Linux dicek utuh.
+
+### 2026-11-08 · Simulasi presence untuk web
+
+Atas izin Key, untuk mengecek mode daftar dan scene 3D `kelas3d-web` dengan banyak avatar. Endpoint dan perilaku API tidak berubah.
+
+File baru:
+
+- `app/Console/Commands/Simulasi.php`: perintah `kelas3d:simulasi`, lihat bagian Simulasi.
+- `tests/Feature/SimulasiTest.php`.
+
+File diubah:
+
+- `app/Support/PresenceRecorder.php`: `apply` jadi public, dipakai simulasi untuk membuat anggota palsu keluar.
+
+### 2026-11-08 · Daftar pengumuman
+
+Atas permintaan Key. Sebelumnya web cuma menampilkan pengumuman yang datang lewat event selama halaman terbuka.
+
+File diubah:
+
+- `routes/api.php`: `GET /api/classrooms/{slug}/announcements` untuk koordinator dan anggota kelas.
+- `app/Http/Controllers/AnnouncementController.php`: method `index`, pengumuman hari ini untuk kelas itu dan semua kelas.
+- `app/Http/Resources/AnnouncementResource.php`: tambah `from` (nama pengirim) dan `for_all`, sama dengan payload `AnnouncementSent`. Respons `POST /api/announcements` ikut berisi dua field ini.
+- `tests/Feature/InteractionTest.php`: tes daftar pengumuman (hari ini saja, kelas lain tidak ikut, anggota kelas lain ditolak, koordinator boleh).
