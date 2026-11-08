@@ -36,7 +36,7 @@ test('ketua kelas membuat perintah install pribadi untuk anggota', function () {
 
     expect($data['code'])->toMatch('/^[A-Z]{4}-[A-Z]{4}$/')
         ->and($data['commands']['windows'])->toBe("irm http://localhost:8000/install.ps1 | iex; kelas3d login {$data['code']}")
-        ->and($data['commands']['macos_linux'])->toEndWith("| sh && kelas3d login {$data['code']}")
+        ->and($data['commands']['macos_linux'])->toBe("curl -fsSL http://localhost:8000/install.sh | sh -s -- {$data['code']}")
         ->and($data['expires_at'])->toBe('2026-11-10T09:00:00+07:00');
 });
 

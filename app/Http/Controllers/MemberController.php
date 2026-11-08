@@ -95,7 +95,8 @@ class MemberController extends Controller
             'expires_at' => now()->addSeconds(config('kelas3d.install_code_ttl'))->toIso8601String(),
             'commands' => [
                 'windows' => "irm $base/install.ps1 | iex; kelas3d login $code",
-                'macos_linux' => "curl -fsSL $base/install.sh | sh && kelas3d login $code",
+                // Installer yang menjalankan login dengan path lengkap, karena PATH baru belum berlaku di shell peserta.
+                'macos_linux' => "curl -fsSL $base/install.sh | sh -s -- $code",
             ],
         ]], 201);
     }

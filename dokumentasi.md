@@ -257,13 +257,13 @@ Siapa: koordinator, ketua kelas itu. `{id}` adalah id keanggotaan. Tanpa body. R
     "expires_at": "2026-11-10T09:00:00+07:00",
     "commands": {
       "windows": "irm http://localhost:8000/install.ps1 | iex; kelas3d login BCDF-GHJK",
-      "macos_linux": "curl -fsSL http://localhost:8000/install.sh | sh && kelas3d login BCDF-GHJK"
+      "macos_linux": "curl -fsSL http://localhost:8000/install.sh | sh -s -- BCDF-GHJK"
     }
   }
 }
 ```
 
-Kode berlaku sekali selama 1 hari. Membuat kode baru membatalkan kode lama milik anggota yang sama. Alamat installer diambil dari `INSTALL_URL` di `.env` (default `APP_URL`). Script installer-nya sendiri dibuat bersama `kelas3d-agent`.
+Kode berlaku sekali selama 1 hari. Membuat kode baru membatalkan kode lama milik anggota yang sama. Alamat installer diambil dari `INSTALL_URL` di `.env` (default `APP_URL`). Script installer-nya ada di repo `kelas3d-agent`. Di macOS dan Linux, kodenya diteruskan ke installer (`sh -s -- <kode>`) dan installer yang menjalankan `kelas3d login` dengan path lengkap, karena folder biner yang baru ditambahkan ke PATH belum berlaku di shell peserta.
 
 #### `GET /api/classrooms/{slug}/devices`
 
@@ -786,3 +786,12 @@ Dihapus:
 - `app/Http/Requests/DeviceCodeRequest.php`, `DeviceTokenRequest.php`, `ConfirmDeviceRequest.php`.
 - Endpoint `POST /api/agent/device-code`, `POST /api/agent/token`, `POST /api/devices/confirm`.
 
+
+### 2026-11-08 · Perintah install macOS dan Linux
+
+Perintah `macos_linux` berganti dari `curl … | sh && kelas3d login <kode>` ke `curl … | sh -s -- <kode>`. Di bentuk lama, `kelas3d login` jalan di shell peserta, yang belum mengenal folder biner baru di PATH (misalnya macOS biasa atau Arch tanpa `~/.local/bin`), jadi login gagal. Di bentuk baru, installer `kelas3d-agent` yang menjalankan login dengan path lengkap. Perintah Windows tidak berubah, karena `install.ps1` memperbarui PATH sesi PowerShell yang sama.
+
+File diubah:
+
+- `app/Http/Controllers/MemberController.php`: isi `commands.macos_linux`.
+- `tests/Feature/DeviceLoginTest.php`: perintah macOS dan Linux dicek utuh.
