@@ -2,9 +2,13 @@
 
 use App\Enums\DeviceStatus;
 use App\Enums\MemberRole;
+use App\Enums\PresenceState;
+use App\Enums\StateReason;
+use App\Events\PresenceChanged;
 use App\Models\ClassroomMember;
 use App\Models\Device;
 use App\Models\User;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Testing\TestResponse;
 
 beforeEach(function () {
@@ -157,6 +161,29 @@ test('revoke mematikan token dan heartbeat ditolak', function () {
 
     expect($device->tokens()->count())->toBe(0);
     $this->withToken($token)->postJson('/api/agent/heartbeat', laporan())->assertUnauthorized();
+});
+
+test('revoke laptop aktif terakhir membuat pemiliknya langsung keluar', function () {
+    Event::fake([PresenceChanged::class]);
+    $a = Device::factory()->approved()->for($this->peserta)->create();
+    $b = Device::factory()->approved()->for($this->peserta)->create();
+    $this->withToken($a->createToken('agent')->plainTextToken)->postJson('/api/agent/heartbeat', laporan())->assertOk();
+    app('auth')->forgetGuards();
+    $this->travel(1)->minute();
+
+    // Laptop b masih aktif, jadi keadaannya dibiarkan.
+    $this->actingAs($this->ketua, 'web')->patchJson("/api/devices/{$a->id}", ['status' => 'revoked'])->assertOk();
+    expect($this->peserta->presence()->first()->state)->toBe(PresenceState::DiKelas);
+
+    $this->actingAs($this->ketua, 'web')->patchJson("/api/devices/{$b->id}", ['status' => 'revoked'])->assertOk();
+    $presence = $this->peserta->presence()->first();
+
+    expect($presence->state)->toBe(PresenceState::Keluar)
+        ->and($presence->state_reason)->toBe(StateReason::Terputus)
+        ->and($presence->app_label)->toBeNull()
+        ->and($this->peserta->activitySessions()->whereNull('ended_at')->exists())->toBeFalse();
+    Event::assertDispatched(PresenceChanged::class, fn (PresenceChanged $e) => $e->broadcastWith()['state'] === 'keluar'
+        && $e->broadcastWith()['app_label'] === null);
 });
 
 test('heartbeat ditolak kalau laptop tidak aktif', function () {

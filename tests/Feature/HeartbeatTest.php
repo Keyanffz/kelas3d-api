@@ -128,9 +128,28 @@ test('heartbeat tertunda (queued) melengkapi riwayat sesuai urutan waktunya', fu
 });
 
 test('isi heartbeat divalidasi', function () {
-    $this->postJson('/api/agent/heartbeat', ['activity' => 'tidur', 'idle_seconds' => -1, 'local_ip' => 'bukan-ip', 'queued' => [['sent_at' => 'kemarin']]])
+    $this->postJson('/api/agent/heartbeat', ['activity' => 'tidur', 'idle_seconds' => -1, 'local_ip' => 'bukan-ip', 'open_apps' => [['activity' => 'tidur']], 'queued' => [['sent_at' => 'kemarin']]])
         ->assertUnprocessable()
-        ->assertJsonValidationErrors(['activity', 'idle_seconds', 'local_ip', 'agent_version', 'sent_at', 'queued.0.sent_at', 'queued.0.idle_seconds']);
+        ->assertJsonValidationErrors(['activity', 'idle_seconds', 'local_ip', 'agent_version', 'sent_at', 'open_apps.0.activity', 'open_apps.0.label', 'queued.0.sent_at', 'queued.0.idle_seconds']);
+});
+
+test('aplikasi lain yang terbuka disimpan tanpa membuka sesi baru dan dikosongkan saat keluar', function () {
+    $apps = [['activity' => 'browsing', 'label' => 'Chrome'], ['activity' => 'main_game', 'label' => 'Steam']];
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => $apps]))->assertOk();
+    $this->travel(10)->seconds();
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => [$apps[0]]]))->assertOk();
+
+    expect(Presence::find($this->peserta->id)->open_apps)->toBe([$apps[0]])
+        ->and(ActivitySession::count())->toBe(1);
+
+    // Agent lama tanpa open_apps, lalu keluar jaringan kelas.
+    $this->travel(10)->seconds();
+    $this->postJson('/api/agent/heartbeat', laporan())->assertOk();
+    expect(Presence::find($this->peserta->id)->open_apps)->toBeNull();
+
+    $this->travel(10)->seconds();
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => $apps, 'local_ip' => '10.0.0.5']))->assertOk();
+    expect(Presence::find($this->peserta->id)->open_apps)->toBeNull();
 });
 
 test('config agent berisi jadwal kelas dan app_rules aktif untuk OS laptop', function () {

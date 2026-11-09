@@ -17,7 +17,7 @@ use Illuminate\Support\Facades\DB;
 class PresenceRecorder
 {
     // Isi laporan agent yang ikut disimpan ke presences.
-    private const REPORT = ['activity', 'app_label', 'project', 'file_name', 'language'];
+    private const REPORT = ['activity', 'app_label', 'project', 'file_name', 'language', 'open_apps'];
 
     public function __construct(private PresenceRules $rules) {}
 

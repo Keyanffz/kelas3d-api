@@ -263,7 +263,7 @@ Siapa: koordinator, ketua kelas itu. `{id}` adalah id keanggotaan. Tanpa body. R
 }
 ```
 
-Kode berlaku sekali selama 1 hari. Membuat kode baru membatalkan kode lama milik anggota yang sama. Alamat installer diambil dari `INSTALL_URL` di `.env` (default `APP_URL`). Script installer-nya ada di repo `kelas3d-agent`. Di macOS dan Linux, kodenya diteruskan ke installer (`sh -s -- <kode>`) dan installer yang menjalankan `kelas3d login` dengan path lengkap, karena folder biner yang baru ditambahkan ke PATH belum berlaku di shell peserta.
+Kode berlaku sekali selama 1 hari. Membuat kode baru membatalkan kode lama milik anggota yang sama. Alamat installer diambil dari `INSTALL_URL` di `.env` (default `APP_URL`). Script installer-nya ada di repo `kelas3d-agent`; `./sajikan.sh <host>` di repo itu menaruh installer dan biner agent di `public/` (`install.sh`, `install.ps1`, `agent/`), jadi server ini sendiri yang menyajikannya tanpa GitHub Releases. Ketiganya diabaikan git. Di macOS dan Linux, kodenya diteruskan ke installer (`sh -s -- <kode>`) dan installer yang menjalankan `kelas3d login` dengan path lengkap, karena folder biner yang baru ditambahkan ke PATH belum berlaku di shell peserta.
 
 #### `GET /api/classrooms/{slug}/devices`
 
@@ -288,7 +288,7 @@ Siapa: koordinator, atau ketua kelas dari kelas pemilik laptop.
 { "status": "revoked" }
 ```
 
-Cuma `revoked` yang diterima. Token agent langsung dihapus, jadi heartbeat berikutnya ditolak 401. Untuk memasang lagi, buat kode install baru. Respons 200: laptop.
+Cuma `revoked` yang diterima. Token agent langsung dihapus, jadi heartbeat berikutnya ditolak 401. Kalau pemiliknya tidak punya laptop lain yang masih `approved`, keadaannya langsung jadi `keluar` dengan alasan `terputus` lewat jalur yang sama dengan scheduler: aplikasi dan project dikosongkan, sesi aktivitas ditutup, dan `PresenceChanged` terkirim. Laporan terakhir laptop itu tidak akan diganti lagi, jadi tidak dibiarkan tampil seolah masih jalan. Untuk memasang lagi, buat kode install baru. Respons 200: laptop.
 
 ### Agent
 
@@ -356,6 +356,7 @@ Siapa: agent dengan token laptop aktif (403 kalau laptop di-revoke).
   "project": "toko-online",
   "file_name": "auth.ts",
   "language": "TypeScript",
+  "open_apps": [{ "activity": "browsing", "label": "Chrome" }],
   "idle_seconds": 12,
   "local_ip": "192.168.10.23",
   "agent_version": "0.1.0",
@@ -367,6 +368,7 @@ Siapa: agent dengan token laptop aktif (403 kalau laptop di-revoke).
 ```
 
 - Wajib: `idle_seconds`, `agent_version`, `sent_at`. `activity` salah satu enum aktivitas atau `null`.
+- `open_apps`: aplikasi lain yang jendelanya terbuka, maksimal 20 item `{activity, label}` (agent mengirim paling banyak 8). Opsional, jadi agent lama tetap diterima; tanpa field ini nilainya `null`. Disimpan di `presences.open_apps`, dikosongkan saat keluar, tidak membuka sesi baru, tapi perubahannya memicu `PresenceChanged` supaya web staf mengambil ulang detailnya.
 - `queued` berisi maksimal 500 heartbeat tertunda dengan field yang sama (tanpa `agent_version`, `last_*`, dan `queued`). Dipakai untuk riwayat saja, urut `sent_at`, dan tidak di-broadcast. Yang lebih tua dari heartbeat terakhir atau dari sesi yang sedang jalan diabaikan.
 
 Respons 200:
@@ -417,14 +419,15 @@ Siapa: koordinator, anggota kelas itu. Satu item per anggota, urut kode kursi. A
       "help_request": { "id": 5, "note": "Error migrate", "status": "menunggu" },
       "project": "toko-online",
       "file_name": "auth.ts",
-      "language": "TypeScript"
+      "language": "TypeScript",
+      "open_apps": [{ "activity": "browsing", "label": "Chrome" }]
     }
   ],
   "coordinators": [{ "id": 1, "name": "Koordinator", "avatar": null }]
 }
 ```
 
-- `project`, `file_name`, dan `language` cuma ada untuk koordinator dan ketua kelas.
+- `project`, `file_name`, `language`, dan `open_apps` cuma ada untuk koordinator dan ketua kelas.
 - `help_request` berisi permintaan bantuan yang belum selesai, atau `null`.
 - `coordinators` berisi koordinator yang sedang berkunjung ke kelas ini.
 - Waktu di respons REST memakai UTC (`02:00:00Z` = 09.00 WIB), sedangkan payload event realtime memakai `+07:00`. Di web, cukup `new Date(...)` untuk keduanya.
@@ -843,3 +846,51 @@ File diubah:
 - `app/Http/Controllers/AnnouncementController.php`: method `index`, pengumuman hari ini untuk kelas itu dan semua kelas.
 - `app/Http/Resources/AnnouncementResource.php`: tambah `from` (nama pengirim) dan `for_all`, sama dengan payload `AnnouncementSent`. Respons `POST /api/announcements` ikut berisi dua field ini.
 - `tests/Feature/InteractionTest.php`: tes daftar pengumuman (hari ini saja, kelas lain tidak ikut, anggota kelas lain ditolak, koordinator boleh).
+
+### 2026-11-09 · Agent disajikan dari server ini
+
+Keputusan Key untuk demo: installer dan biner agent diunduh dari laptop server, bukan dari GitHub Releases. File-nya dibuat `./sajikan.sh` di `kelas3d-agent`.
+
+File diubah:
+
+- `.gitignore`: abaikan `public/install.sh`, `public/install.ps1`, dan `public/agent/`.
+
+Data lokal (tanpa perubahan kode): jadwal seeder dipulihkan lewat tinker atas persetujuan Key, karena yang tersisa cuma dua jadwal uji Data Science hari ini dan Developer tidak punya jadwal sama sekali. Kedua kelas kembali ke Senin–Jumat kelas 08.00–16.00 dan istirahat 12.00–13.00 (Jumat 11.30–13.00).
+
+### 2026-11-09 · Revoke membuat pemilik laptop keluar
+
+Ditemukan saat uji agent sungguhan: sesudah laptop ketua kelas di-revoke, panel masih menampilkan aplikasi terakhirnya (Thorium) dan avatarnya baru keluar 30 menit kemudian lewat scheduler, padahal laptop itu tidak akan melapor lagi. Atas permintaan Key, revoke sekarang langsung mengubah keadaan pemiliknya jadi `keluar` (alasan `terputus`), kecuali dia masih punya laptop lain yang aktif.
+
+File diubah:
+
+- `app/Http/Controllers/DeviceController.php`: `update` memanggil `PresenceRecorder::apply` sesudah token dihapus.
+- `tests/Feature/DeviceLoginTest.php`: tes revoke dengan dua laptop (laptop pertama di-revoke, keadaan tetap; laptop terakhir di-revoke, keluar dengan alasan terputus, aplikasi kosong, sesi ditutup, event terkirim).
+- `dokumentasi.md`: penjelasan `PATCH /api/devices/{id}`.
+
+### 2026-11-09 · Aturan IDE lain dan Steam
+
+Masukan Key saat gladi resik di WiFi kampus. Cursor, Windsurf, Antigravity, dan Android Studio masuk `ngoding` (keputusan Key), dan jendela Steam terbaca sebagai `steamwebhelper`, bukan `steam`.
+
+File diubah:
+
+- `database/seeders/AppRuleSeeder.php`: 16 aturan baru (Android Studio, Cursor, Windsurf, dan Antigravity untuk tiga OS, termasuk `antigravity-ide` di Arch dan `Antigravity IDE.exe` di Windows yang ketemu di laptop teman; `steamwebhelper` di Windows dan Linux). Seeder memakai `firstOrCreate` per `match_on`, `pattern`, dan `os`, jadi boleh dijalankan ulang ke database yang sudah terisi tanpa menggandakan atau menimpa aturan yang diubah lewat Kelola.
+
+Database lokal: `php artisan db:seed --class=AppRuleSeeder` menambah 15 aturan (27 jadi 42); dijalankan dua kali, jumlah tetap. Tes: `SeederTest` dan `AppRuleTest` lulus (7 tes), `pint --test` bersih.
+
+### 2026-11-09 · Daftar aplikasi yang terbuka
+
+Usulan Key: aplikasi lain yang jendelanya terbuka ikut dilaporkan agent dan ditampilkan ke ketua kelas dan koordinator.
+
+File baru:
+
+- `database/migrations/2026_11_09_150000_add_open_apps_to_presences_table.php`: kolom JSON `open_apps` di `presences`.
+
+File diubah:
+
+- `app/Models/Presence.php`: `open_apps` fillable dan cast `array`.
+- `app/Http/Requests/HeartbeatRequest.php`: validasi `open_apps` (juga di `queued`).
+- `app/Support/PresenceRecorder.php`: `open_apps` masuk `REPORT`, jadi tersimpan, dikosongkan saat keluar, dan memicu `PresenceChanged` saat berubah tanpa membuka sesi baru.
+- `app/Http/Resources/PresenceResource.php`: `open_apps` di detail staf.
+- `tests/Feature/HeartbeatTest.php`, `tests/Feature/PresenceTest.php`: validasi, penyimpanan, agent lama tanpa field, kosong saat keluar, tersembunyi dari anggota biasa.
+
+Tes: `php artisan test` untuk Heartbeat, Presence, Realtime, dan Simulasi lulus (32 tes), `pint --test` bersih. `php artisan migrate` dijalankan di database lokal. Catatan: server yang sedang jalan langsung memakai `PresenceRecorder` baru sebelum migration, jadi tiga heartbeat laptop Windows (15.21) dan satu putaran scheduler (15.22.01) sempat gagal karena kolom belum ada; heartbeat yang gagal masuk antrean agent dan terkirim ulang.

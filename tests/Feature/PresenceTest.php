@@ -8,7 +8,11 @@ use App\Models\Presence;
 beforeEach(function () {
     $this->kelas = kelasDeveloper();
     $this->peserta = anggota($this->kelas, seat: 'a1');
-    Presence::factory()->for($this->peserta)->create(['classroom_id' => $this->kelas->id, 'project' => 'toko-online']);
+    Presence::factory()->for($this->peserta)->create([
+        'classroom_id' => $this->kelas->id,
+        'project' => 'toko-online',
+        'open_apps' => [['activity' => 'browsing', 'label' => 'Chrome']],
+    ]);
 });
 
 test('anggota melihat keadaan ruangan tanpa detail kerjaan', function () {
@@ -22,6 +26,7 @@ test('anggota melihat keadaan ruangan tanpa detail kerjaan', function () {
         ->assertJsonPath('data.0.state', 'di_kelas')
         ->assertJsonPath('data.0.app_label', 'VS Code')
         ->assertJsonMissingPath('data.0.project')
+        ->assertJsonMissingPath('data.0.open_apps')
         // Belum pernah kirim heartbeat berarti keluar.
         ->assertJsonPath('data.1.state', 'keluar');
 });
@@ -33,7 +38,8 @@ test('ketua kelas dan koordinator melihat detail kerjaan', function () {
     foreach ([$ketua, koordinator()] as $user) {
         $this->actingAs($user)
             ->getJson('/api/classrooms/developer/presences')
-            ->assertJsonPath('data.1.project', 'toko-online');
+            ->assertJsonPath('data.1.project', 'toko-online')
+            ->assertJsonPath('data.1.open_apps.0.label', 'Chrome');
     }
 });
 

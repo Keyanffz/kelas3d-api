@@ -42,6 +42,7 @@ class PresenceResource extends JsonResource
                 'project' => $here?->project,
                 'file_name' => $here?->file_name,
                 'language' => $here?->language,
+                'open_apps' => $here?->open_apps,
             ]),
         ];
     }

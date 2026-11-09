@@ -13,7 +13,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 #[Table(key: 'user_id', incrementing: false)]
-#[Fillable(['user_id', 'classroom_id', 'state', 'state_reason', 'activity', 'app_label', 'project', 'file_name', 'language', 'last_heartbeat_at', 'state_since'])]
+#[Fillable(['user_id', 'classroom_id', 'state', 'state_reason', 'activity', 'app_label', 'project', 'file_name', 'language', 'open_apps', 'last_heartbeat_at', 'state_since'])]
 class Presence extends Model
 {
     /** @use HasFactory<PresenceFactory> */
@@ -28,6 +28,7 @@ class Presence extends Model
             'state' => PresenceState::class,
             'state_reason' => StateReason::class,
             'activity' => Activity::class,
+            'open_apps' => 'array',
             'last_heartbeat_at' => 'datetime',
             'state_since' => 'datetime',
         ];

@@ -21,6 +21,10 @@ class HeartbeatRequest extends FormRequest
             'project' => ['nullable', 'string', 'max:255'],
             'file_name' => ['nullable', 'string', 'max:255'],
             'language' => ['nullable', 'string', 'max:50'],
+            // Aplikasi lain yang jendelanya terbuka, cuma kategori dan label. Agent mengirim paling banyak 8.
+            'open_apps' => ['nullable', 'array', 'max:20'],
+            'open_apps.*.activity' => ['required', Rule::enum(Activity::class)],
+            'open_apps.*.label' => ['required', 'string', 'max:255'],
             'idle_seconds' => ['required', 'integer', 'min:0'],
             'local_ip' => ['nullable', 'ip'],
             'sent_at' => ['required', 'date'],

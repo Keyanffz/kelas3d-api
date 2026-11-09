@@ -25,3 +25,8 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+
+# Agent dan installer yang disajikan dari server ini, dibuat ./sajikan.sh di kelas3d-agent
+/public/agent/
+/public/install.sh
+/public/install.ps1
