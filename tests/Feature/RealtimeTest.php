@@ -36,6 +36,7 @@ test('heartbeat yang mengubah keadaan mengirim PresenceChanged ke channel kelas'
                 'activity' => 'ngoding',
                 'app_label' => 'VS Code',
                 'state_since' => '2026-11-09T09:00:00+07:00',
+                'focus' => false,
             ];
     });
 });

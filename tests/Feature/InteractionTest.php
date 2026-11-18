@@ -129,6 +129,14 @@ test('ketua kelas menangani lalu menyelesaikan permintaan bantuan', function () 
         ->assertOk()
         ->assertJsonPath('data.handled_by.id', $this->ketua->id);
 
+    // Antrean di web memakai penanganan dan waktu angkat tangan dari daftar presence.
+    $this->actingAs($this->ketua)
+        ->getJson('/api/classrooms/developer/presences')
+        ->assertJsonPath('data.1.help_request.handled_by.name', $this->ketua->name)
+        ->assertJsonPath('data.1.help_request.created_at', $help->created_at->toJSON());
+    Event::assertDispatched(HelpRequested::class, fn (HelpRequested $event) => $event->broadcastWith()['handled_by']['id'] === $this->ketua->id
+        && $event->broadcastWith()['created_at'] !== null);
+
     $this->actingAs($this->ketua)
         ->patchJson("/api/help-requests/{$help->id}", ['status' => 'selesai'])
         ->assertOk();

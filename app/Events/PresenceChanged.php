@@ -30,6 +30,7 @@ class PresenceChanged implements ShouldBroadcast
             'activity' => $here ? $presence->activity?->value : null,
             'app_label' => $here ? $presence->app_label : null,
             'state_since' => $presence->state_since?->toIso8601String(),
+            'focus' => $here && $presence->focus_since !== null,
         ];
     }
 

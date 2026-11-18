@@ -31,11 +31,16 @@ class PresenceResource extends JsonResource
             'activity' => $here?->activity,
             'app_label' => $here?->app_label,
             'state_since' => $here?->state_since,
+            'focus' => $here?->focus_since !== null,
             'last_heartbeat_at' => $presence?->last_heartbeat_at,
             'help_request' => $this->openHelpRequest ? [
                 'id' => $this->openHelpRequest->id,
                 'note' => $this->openHelpRequest->note,
                 'status' => $this->openHelpRequest->status,
+                'handled_by' => $this->openHelpRequest->handler
+                    ? ['id' => $this->openHelpRequest->handler->id, 'name' => $this->openHelpRequest->handler->name]
+                    : null,
+                'created_at' => $this->openHelpRequest->created_at,
             ] : null,
             // Detail kerjaan cuma untuk koordinator dan ketua kelas.
             $this->mergeWhen($request->user()->can('manageMembers', $this->classroom), fn () => [

@@ -2,6 +2,7 @@
 
 use App\Enums\PresenceState;
 use App\Models\Presence;
+use App\Models\ScreenSession;
 use App\Support\PresenceRecorder;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -20,4 +21,8 @@ Artisan::command('presences:check', function (PresenceRecorder $recorder) {
         ->each(fn (Presence $presence) => $recorder->check($presence, $now));
 })->purpose('Perbarui keadaan peserta yang heartbeat-nya berhenti atau jam kelasnya selesai');
 
+Artisan::command('screen-sessions:expire', fn () => ScreenSession::closeExpired())
+    ->purpose('Tutup permintaan lihat layar yang tidak direspons dan sesi yang melewati batas waktu');
+
 Schedule::command('presences:check')->everyThirtySeconds();
+Schedule::command('screen-sessions:expire')->everyThirtySeconds();

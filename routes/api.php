@@ -12,6 +12,7 @@ use App\Http\Controllers\MemberController;
 use App\Http\Controllers\NudgeController;
 use App\Http\Controllers\PresenceController;
 use App\Http\Controllers\ScheduleController;
+use App\Http\Controllers\ScreenSessionController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\EnsureDeviceApproved;
 use App\Models\Classroom;
@@ -40,6 +41,8 @@ Route::middleware('auth:web')->group(function () {
     Route::post('logout', [AuthController::class, 'logout']);
     Route::get('me', [AuthController::class, 'me']);
     Route::patch('users/{user}/avatar', [UserController::class, 'updateAvatar'])->can('updateAvatar', 'user');
+    Route::get('progress', [UserController::class, 'progress']);
+    Route::put('aksesoris', [UserController::class, 'aksesoris']);
     Route::get('users/{user}/activity', [UserController::class, 'activity'])->can('viewActivity', 'user');
 
     Route::patch('devices/{device}', [DeviceController::class, 'update'])->can('update', 'device');
@@ -47,8 +50,11 @@ Route::middleware('auth:web')->group(function () {
     Route::post('coordinator/visit', [CoordinatorController::class, 'visit'])->can('koordinator');
     Route::post('announcements', [AnnouncementController::class, 'store'])->can('koordinator');
 
+    Route::put('focus', [PresenceController::class, 'focus']);
+
     Route::post('help-requests', [HelpRequestController::class, 'store']);
     Route::patch('help-requests/{helpRequest}', [HelpRequestController::class, 'update']);
+    Route::post('help-requests/{helpRequest}/screen-session', [ScreenSessionController::class, 'share']);
 
     Route::middleware('can:koordinator')->group(function () {
         Route::get('app-rules', [AppRuleController::class, 'index']);
@@ -60,6 +66,10 @@ Route::middleware('auth:web')->group(function () {
     Route::get('nudges', [NudgeController::class, 'index']);
     Route::post('nudges', [NudgeController::class, 'store'])->can('koordinator');
     Route::patch('nudges/{nudge}', [NudgeController::class, 'update'])->can('update', 'nudge');
+
+    Route::get('screen-sessions', [ScreenSessionController::class, 'index']);
+    Route::post('screen-sessions', [ScreenSessionController::class, 'store'])->can('koordinator');
+    Route::patch('screen-sessions/{screenSession}', [ScreenSessionController::class, 'update'])->can('update', 'screenSession');
 
     Route::get('classrooms', [ClassroomController::class, 'index']);
     Route::post('classrooms', [ClassroomController::class, 'store'])->can('create', Classroom::class);
@@ -76,6 +86,7 @@ Route::middleware('auth:web')->group(function () {
         Route::get('presences', [PresenceController::class, 'index'])->can('view', 'classroom');
         Route::get('announcements', [AnnouncementController::class, 'index'])->can('view', 'classroom');
         Route::get('devices', [DeviceController::class, 'index'])->can('manageMembers', 'classroom');
+        Route::get('screen-sessions', [ScreenSessionController::class, 'log'])->can('manageMembers', 'classroom');
 
         Route::get('members', [MemberController::class, 'index'])->can('manageMembers', 'classroom');
         Route::post('members', [MemberController::class, 'store'])->can('manageMembers', 'classroom');

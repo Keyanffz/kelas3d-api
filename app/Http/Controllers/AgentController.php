@@ -122,7 +122,7 @@ class AgentController extends Controller
             }
         }
 
-        $recorder->heartbeat($user, $request->validated(), $request->ip(), $now);
+        $presence = $recorder->heartbeat($user, $request->validated(), $request->ip(), $now);
         $device->update(['agent_version' => $request->validated('agent_version'), 'last_seen_at' => $now]);
 
         $classroomIds = $user->memberships()->pluck('classroom_id');
@@ -135,6 +135,9 @@ class AgentController extends Controller
                 fn ($query) => $query->where('created_at', '>=', $now->copy()->startOfDay()))
             ->orderBy('id')
             ->limit(20)
+            // Selama mode fokus pengumuman ditahan; agent menerimanya begitu fokus selesai,
+            // karena last_announcement_id miliknya belum maju.
+            ->when($presence->focus_since !== null, fn ($query) => $query->whereRaw('1 = 0'))
             ->get(['id', 'message']);
 
         $nudges = Nudge::with('aboutUser')

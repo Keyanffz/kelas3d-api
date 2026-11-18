@@ -78,6 +78,11 @@ class PresenceRecorder
             ...($out ? [] : $report),
         ]);
 
+        // Mode fokus tidak dibawa pulang: selesai begitu peserta keluar.
+        if ($out) {
+            $presence->focus_since = null;
+        }
+
         if (! $presence->exists || $presence->isDirty('state')) {
             $presence->state_since = $at;
         }

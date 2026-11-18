@@ -27,6 +27,7 @@ class HelpRequested implements ShouldBroadcast
             'note' => $help->note,
             'status' => $help->status->value,
             'handled_by' => $help->handler ? ['id' => $help->handler->id, 'name' => $help->handler->name] : null,
+            'created_at' => $help->created_at,
         ];
     }
 

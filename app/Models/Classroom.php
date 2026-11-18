@@ -46,6 +46,11 @@ class Classroom extends Model
         return $this->hasMany(Announcement::class);
     }
 
+    public function screenSessions(): HasMany
+    {
+        return $this->hasMany(ScreenSession::class);
+    }
+
     /**
      * Kode kursi yang sah, sesuai titik seat_<kelas>_<kode> di gedung.glb.
      *

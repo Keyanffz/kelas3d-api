@@ -380,7 +380,7 @@ Respons 200:
 }
 ```
 
-`announcements` berisi pengumuman untuk semua kelas atau kelas pemilik laptop dengan id di atas `last_announcement_id`; kalau `last_announcement_id` kosong, pengumuman hari ini. `nudges` cuma terisi untuk ketua kelas: teguran berstatus `terkirim` dengan id di atas `last_nudge_id`. Maksimal 20 per jenis.
+`announcements` berisi pengumuman untuk semua kelas atau kelas pemilik laptop dengan id di atas `last_announcement_id`; kalau `last_announcement_id` kosong, pengumuman hari ini. Selama pemiliknya memakai mode fokus, `announcements` kosong. `nudges` cuma terisi untuk ketua kelas: teguran berstatus `terkirim` dengan id di atas `last_nudge_id`. Maksimal 20 per jenis.
 
 Yang terjadi di server:
 
@@ -415,8 +415,9 @@ Siapa: koordinator, anggota kelas itu. Satu item per anggota, urut kode kursi. A
       "activity": "ngoding",
       "app_label": "VS Code",
       "state_since": "2026-11-09T02:00:00.000000Z",
+      "focus": false,
       "last_heartbeat_at": "2026-11-09T02:15:20.000000Z",
-      "help_request": { "id": 5, "note": "Error migrate", "status": "menunggu" },
+      "help_request": { "id": 5, "note": "Error migrate", "status": "ditangani", "handled_by": { "id": 3, "name": "Sinta" }, "created_at": "..." },
       "project": "toko-online",
       "file_name": "auth.ts",
       "language": "TypeScript",
@@ -428,9 +429,26 @@ Siapa: koordinator, anggota kelas itu. Satu item per anggota, urut kode kursi. A
 ```
 
 - `project`, `file_name`, `language`, dan `open_apps` cuma ada untuk koordinator dan ketua kelas.
-- `help_request` berisi permintaan bantuan yang belum selesai, atau `null`.
+- `focus` bernilai `true` selama peserta itu memakai mode fokus.
+- `help_request` berisi permintaan bantuan yang belum selesai, atau `null`. `handled_by` dan `created_at` (waktu angkat tangan) dipakai web untuk antrean bantuan.
 - `coordinators` berisi koordinator yang sedang berkunjung ke kelas ini.
 - Waktu di respons REST memakai UTC (`02:00:00Z` = 09.00 WIB), sedangkan payload event realtime memakai `+07:00`. Di web, cukup `new Date(...)` untuk keduanya.
+
+#### `PUT /api/focus`
+
+Siapa: peserta atau ketua kelas yang sedang di kelas atau istirahat, untuk dirinya sendiri.
+
+```json
+{ "on": true }
+```
+
+Respons 200: `{"data": {"focus": true, "focus_since": "..."}}`. Ditolak 422 di `on` kalau dia belum pernah mengirim heartbeat atau sedang `keluar` (termasuk koordinator, yang tidak punya presence). Kelasnya menerima `PresenceChanged` dengan `focus` yang baru; menyalakan yang sudah menyala tidak mengirim event.
+
+Selama fokus:
+
+- Pengumuman tidak dikirim ke agent lewat balasan heartbeat. Agent menerimanya begitu fokus selesai, karena `last_announcement_id` miliknya belum maju. Web menahan banner-nya sendiri.
+- Permintaan lihat layar dan teguran untuk ketua kelas tetap masuk.
+- Fokus selesai sendiri saat peserta `keluar` (jam kelas habis, keluar jaringan, laptop di-revoke, atau tanpa heartbeat 30 menit).
 
 #### `GET /api/users/{id}/activity`
 
@@ -509,7 +527,13 @@ Siapa: koordinator dan ketua kelas itu boleh mengisi `ditangani` atau `selesai`.
 { "status": "ditangani" }
 ```
 
-Staf yang mengubah status tercatat di `handled_by`. Respons 200. Pembuatan dan tiap perubahan status dikirim sebagai `HelpRequested`.
+Staf yang mengubah status tercatat di `handled_by`. Respons 200. Pembuatan dan tiap perubahan status dikirim sebagai `HelpRequested` (`id`, `user`, `note`, `status`, `handled_by`, `created_at`). Saat `selesai`, share layar sukarela dari permintaan ini yang masih berjalan ikut ditutup (`selesai`, alasan `dihentikan`).
+
+#### `POST /api/help-requests/{id}/screen-session`
+
+Siapa: peserta yang angkat tangan, sesudah permintaannya `ditangani`. Orang lain 403. Tanpa body.
+
+Share layar sukarela ke orang di `handled_by` (koordinator atau ketua kelas), tanpa persetujuan ketua karena peserta sendiri yang memulai. Respons 201: sesi lihat layar dengan `help_request_id` terisi, `approver` `null`, dan status langsung `menyambung` (browser peserta sudah memilih layar sebelum memanggil endpoint ini). Sesudah itu sama dengan lihat layar biasa: `mulai` saat tersambung, `stop` oleh dua ujungnya. Ditolak 422 di `help_request` kalau belum ada yang menangani, web penanganannya sedang tidak terbuka, atau peserta itu masih punya sesi lihat layar berjalan.
 
 ### Teguran lewat ketua kelas
 
@@ -546,6 +570,76 @@ Siapa: ketua kelas penerima teguran.
 ```
 
 `status`: `dibaca` atau `selesai`. `read_at` terisi saat pertama ditandai, `handled_at` saat `selesai`. Respons 200. Tiap perubahan juga dikirim sebagai `NudgeSent`.
+
+### Lihat layar
+
+Koordinator melihat layar mahasiswa secara langsung, lewat ketua kelas dan dengan izin mahasiswanya. Server cuma mengurus izin dan log; gambarnya mengalir langsung antar-browser lewat WebRTC dan tidak pernah disimpan. Tabel `screen_sessions` sekaligus jadi log-nya.
+
+Bentuk satu sesi:
+
+```json
+{
+  "id": 4, "classroom": "developer",
+  "viewer": { "id": 1, "name": "Koordinator" }, "target": { "id": 7, "name": "Budi" }, "help_request_id": null,
+  "approver": { "id": 3, "name": "Sinta" },
+  "reason": "Dari tadi browsing", "status": "live", "close_reason": null, "closed_by": null,
+  "expires_at": "...", "started_at": "...", "ended_at": null, "created_at": "..."
+}
+```
+
+| `status` | Arti | Berikutnya |
+| --- | --- | --- |
+| `menunggu_ketua` | Menunggu ketua kelas, 60 detik | `setujui`, `tolak` oleh ketua |
+| `menunggu_mahasiswa` | Disetujui ketua, menunggu mahasiswa, 60 detik | `izinkan`, `tolak` oleh mahasiswa |
+| `menyambung` | Mahasiswa mengizinkan dan sudah memilih layar; WebRTC sedang tersambung, 60 detik | `mulai` oleh mahasiswa |
+| `live` | Stream jalan, paling lama 30 menit | `stop` |
+| `ditolak`, `kedaluwarsa`, `selesai` | Berakhir | — |
+
+`help_request_id` terisi untuk share sukarela dari antrean bantuan (lihat `POST /api/help-requests/{id}/screen-session`). Sesi seperti itu cuma melibatkan dua ujungnya: ketua kelas tidak diberi tahu dan tidak bisa menghentikannya, kecuali dia sendiri penontonnya, tapi tetap tercatat di log kelas.
+
+`close_reason`: `ditolak_ketua`, `ditolak_mahasiswa`, `izin_browser` (pemilih layar ditutup atau browser menolak), `dihentikan`, `terputus`, `batas_waktu`. `closed_by` berisi orang yang menolak atau menghentikan. Angka waktunya ada di `config/kelas3d.php` bagian `screen`.
+
+#### `GET /api/screen-sessions`
+
+Siapa: yang login. Sesi yang masih berjalan dan melibatkan dia: koordinator mendapat yang ia minta atau yang dibagikan kepadanya, ketua kelas semua sesi di kelasnya kecuali share sukarela orang lain, mahasiswa cuma yang sudah disetujui ketua atau yang ia bagikan sendiri. Respons 200: `{"data": [sesi, ...], "ice_servers": [{"urls": "stun:stun.l.google.com:19302"}]}`.
+
+`ice_servers` diteruskan apa adanya ke `RTCPeerConnection` di browser. Isinya dari `ICE_SERVERS` di `.env` (JSON); tanpa itu cuma STUN Google. Untuk menambah TURN cukup ubah `.env` API lalu `php artisan config:clear`, web tidak perlu di-build ulang. Siapa pun yang login bisa membaca nilainya, jadi pakai kredensial TURN yang memang untuk klien.
+
+#### `POST /api/screen-sessions`
+
+Siapa: koordinator.
+
+```json
+{ "classroom": "developer", "target_user_id": 7, "reason": "Dari tadi browsing" }
+```
+
+`reason` opsional. Respons 201: sesi berstatus `menunggu_ketua`. Kalau yang dituju ketua kelas sendiri, langkah ketua dilewati: status langsung `menunggu_mahasiswa` dengan `approver` `null`. Ditolak 422:
+
+- `classroom`: kelas belum punya ketua, atau web ketua kelas sedang tidak terbuka.
+- `target_user_id`: bukan anggota kelas itu, masih punya sesi yang berjalan (satu mahasiswa satu sesi), atau web-nya sedang tidak terbuka.
+
+"Web terbuka" berarti channel `private-user.{id}` orang itu sedang didengar di Reverb (`App\Support\WebOnline`). Layar diambil browser, bukan agent, jadi tanpa web yang terbuka permintaan tidak mungkin dijawab.
+
+#### `PATCH /api/screen-sessions/{id}`
+
+Siapa: koordinator peminta, ketua kelas itu, dan mahasiswanya sesudah ketua setuju. Orang lain 403.
+
+```json
+{ "action": "setujui" }
+```
+
+| `action` | Siapa | Saat status |
+| --- | --- | --- |
+| `setujui`, `tolak` | Ketua kelas | `menunggu_ketua` |
+| `izinkan`, `tolak` | Mahasiswa | `menunggu_mahasiswa` |
+| `mulai` | Mahasiswa, sesudah WebRTC tersambung | `menyambung` |
+| `stop` | Ketiganya | Kapan pun selama berjalan |
+
+`stop` boleh membawa `"reason": "izin_browser"` (hasilnya `ditolak`) atau `"reason": "terputus"`; tanpa itu `dihentikan`. Aksi yang tidak cocok dengan status sekarang, termasuk sesi yang sudah kedaluwarsa, ditolak 422 di `action`. Respons 200: sesi.
+
+#### `GET /api/classrooms/{slug}/screen-sessions`
+
+Siapa: koordinator, ketua kelas itu. Log 50 sesi terakhir kelas itu, terbaru dulu, termasuk yang ditolak dan kedaluwarsa.
 
 ### Aturan aplikasi
 
@@ -604,12 +698,14 @@ Nama event memakai titik di depan (`.PresenceChanged`) karena dikirim dengan nam
 | --- | --- | --- |
 | `private-classroom.{slug}` | Koordinator, anggota kelas itu | `PresenceChanged`, `HelpRequested`, `AnnouncementSent`, `CoordinatorMoved` |
 | `private-classroom.{slug}.staff` | Koordinator, ketua kelas itu | `NudgeSent` |
+| `private-user.{id}` | Pemilik akun itu | `ScreenSessionChanged` |
+| `presence-screen.{id}` | Koordinator peminta dan mahasiswanya, selama sesi `menyambung` atau `live` | Whisper `sinyal` antar-browser |
 
 Payload:
 
 ```json
 // PresenceChanged: tanpa project dan file, staf mengambil detailnya lewat REST
-{ "user_id": 7, "state": "istirahat", "state_reason": "idle", "activity": "ngoding", "app_label": "VS Code", "state_since": "2026-11-09T09:05:00+07:00" }
+{ "user_id": 7, "state": "istirahat", "state_reason": "idle", "activity": "ngoding", "app_label": "VS Code", "state_since": "2026-11-09T09:05:00+07:00", "focus": false }
 
 // HelpRequested: saat angkat tangan dan tiap status berubah
 { "id": 5, "user": { "id": 7, "name": "Budi" }, "note": "Error migrate", "status": "menunggu", "handled_by": null }
@@ -626,6 +722,12 @@ Payload:
 
 `PresenceChanged` untuk peserta yang pindah kelas atau keluar jaringan juga dikirim ke kelas asalnya dengan `state` `keluar`.
 
+`ScreenSessionChanged` berisi satu sesi dengan bentuk yang sama seperti di bagian Lihat layar, dikirim saat dibuat dan tiap statusnya berubah ke channel pribadi koordinator peminta, ketua kelas itu, dan mahasiswanya. Mahasiswa baru ikut diberi tahu sesudah ketua kelas setuju, jadi permintaan yang ditolak ketua tidak pernah sampai ke dia. Event ini dikirim langsung tanpa antrean (`ShouldBroadcastNow`), jadi Reverb harus hidup saat endpoint lihat layar dipanggil.
+
+Signaling WebRTC tidak lewat API. Kedua browser bergabung ke `presence-screen.{id}` lalu bertukar whisper `sinyal` berisi `{desc}` (tawaran dan jawaban) atau `{ice}` (kandidat). Channel-nya presence supaya tiap ujung tahu kalau ujung satunya menghilang. Reverb menerima client event dari anggota channel (`accept_client_events_from`), dan batas ukuran pesannya dinaikkan ke 50 KB di `config/reverb.php` karena tawaran dari Chrome bisa mendekati 10 KB.
+
+Scheduler `screen-sessions:expire` jalan tiap 30 detik: permintaan yang lewat `expires_at` jadi `kedaluwarsa`, sesi `live` yang lewat batas waktu jadi `selesai` dengan alasan `batas_waktu`. Endpoint lihat layar menjalankan pengecekan yang sama dulu, jadi jawaban yang terlambat ditolak tanpa menunggu scheduler.
+
 Scheduler `presences:check` jalan tiap 30 detik. Ia memakai aturan yang sama dengan heartbeat:
 
 - Tanpa heartbeat 2 menit: `istirahat` dengan alasan `terputus`.
@@ -641,6 +743,22 @@ composer dev
 Perintah ini menjalankan `serve` (port 8000), `queue:listen` (event broadcast lewat antrean), `pail` (log), `reverb:start` (port 8080), dan `schedule:work` (scheduler) sekaligus. Kalau mau dijalankan terpisah, kelimanya tetap harus nyala supaya realtime jalan.
 
 `serve` cuma mendengarkan di `127.0.0.1`. Supaya bisa dibuka dari laptop lain di jaringan yang sama, isi `SERVER_HOST=0.0.0.0` di `.env`. Reverb sudah mendengarkan di `0.0.0.0` dari awal (`REVERB_SERVER_HOST`). Langkah lengkap demo di jaringan kelas ada di `kelas3d-web/dokumentasi.md`.
+
+### Akun uji
+
+Tiga akun ber-password untuk menguji alur antar-role tanpa agent, misalnya lihat layar:
+
+```bash
+php artisan db:seed --class=AkunUjiSeeder
+```
+
+| Role | Email | Password |
+| --- | --- | --- |
+| Koordinator | `koordinator@uji.test` | `kelas3d-uji` |
+| Ketua kelas Data Science | `ketua@uji.test` | `kelas3d-uji` |
+| Mahasiswa Data Science | `mahasiswa@uji.test` | `kelas3d-uji` |
+
+Ketiganya masuk lewat `/login` di web dan sudah punya avatar. Ketua dan mahasiswa mendapat dua kursi kosong pertama di Data Science. Seeder cuma jalan di `APP_ENV=local`, boleh diulang, dan menurunkan ketua lama Data Science jadi anggota (sama seperti penunjukan ketua di web). Tanpa agent kedua akun itu berstatus `keluar`, jadi avatarnya tidak tampil di 3D; pilih dari daftar di panel kanan. Hapus ketiganya sebelum dipakai sungguhan.
 
 ### Simulasi
 
@@ -894,3 +1012,129 @@ File diubah:
 - `tests/Feature/HeartbeatTest.php`, `tests/Feature/PresenceTest.php`: validasi, penyimpanan, agent lama tanpa field, kosong saat keluar, tersembunyi dari anggota biasa.
 
 Tes: `php artisan test` untuk Heartbeat, Presence, Realtime, dan Simulasi lulus (32 tes), `pint --test` bersih. `php artisan migrate` dijalankan di database lokal. Catatan: server yang sedang jalan langsung memakai `PresenceRecorder` baru sebelum migration, jadi tiga heartbeat laptop Windows (15.21) dan satu putaran scheduler (15.22.01) sempat gagal karena kolom belum ada; heartbeat yang gagal masuk antrean agent dan terkirim ulang.
+
+### 2026-11-10 · Lihat layar mahasiswa (Fitur A)
+
+Keputusan Key: koordinator melihat layar mahasiswa lewat ketua kelas, wajib izin mahasiswa, WebRTC langsung antar-browser dengan signaling lewat Reverb, tanpa rekaman. Web mahasiswa atau ketua yang tertutup membuat permintaan langsung ditolak. Kalau yang dituju ketua kelas sendiri, langkah ketua dilewati.
+
+File baru:
+
+- `database/migrations/2026_11_10_090000_create_screen_sessions_table.php`: tabel `screen_sessions`, sekaligus log.
+- `app/Enums/ScreenStatus.php`, `app/Enums/ScreenCloseReason.php`.
+- `app/Models/ScreenSession.php`, `database/factories/ScreenSessionFactory.php`: relasi, `audience()` (siapa yang diberi tahu), dan `closeExpired()`.
+- `app/Events/ScreenSessionChanged.php`: ke channel pribadi pihak yang terlibat, tanpa antrean.
+- `app/Http/Controllers/ScreenSessionController.php`, `app/Http/Requests/StoreScreenSessionRequest.php`, `UpdateScreenSessionRequest.php`, `app/Http/Resources/ScreenSessionResource.php`, `app/Policies/ScreenSessionPolicy.php`.
+- `app/Support/WebOnline.php`: bertanya ke Reverb apakah channel pribadi seseorang sedang didengar.
+- `database/seeders/AkunUjiSeeder.php`: lihat bagian Akun uji.
+- `tests/Feature/ScreenSessionTest.php`.
+
+File diubah:
+
+- `routes/api.php`: empat endpoint lihat layar.
+- `routes/channels.php`: channel `user.{id}` dan `screen.{session}`.
+- `routes/console.php`: perintah `screen-sessions:expire` tiap 30 detik.
+- `config/kelas3d.php`: bagian `screen` (masa berlaku permintaan, batas durasi, `ice_servers`).
+- `config/reverb.php`: `max_message_size` default 50 KB.
+- `app/Models/Classroom.php`: relasi `screenSessions`.
+- `.env.example`: contoh `ICE_SERVERS`.
+- `tests/Feature/SeederTest.php`: tes `AkunUjiSeeder`.
+
+Tes: `php artisan test tests/Feature/ScreenSessionTest.php tests/Feature/SeederTest.php` lulus (14 tes), `pint --test` bersih. `php artisan migrate` dijalankan di database lokal. `WebOnline` dicoba ke Reverb sungguhan: channel yang sedang didengar terbaca `occupied`, dan kembali kosong sesudah koneksinya putus. Alur di browser belum dicoba.
+
+Belum ada: share layar sukarela dari antrean bantuan (tahap berikutnya, memakai tabel dan modul yang sama).
+
+### 2026-11-10 · Mode fokus
+
+Peserta menandai dirinya sedang fokus: avatarnya memakai headphone di web, dan pengumuman ditahan sampai fokus selesai. Keputusan Key: yang ditahan cuma pengumuman; permintaan lihat layar dan teguran tetap masuk.
+
+File baru:
+
+- `database/migrations/2026_11_10_120000_add_focus_since_to_presences_table.php`: kolom `presences.focus_since`.
+- `app/Http/Requests/FocusRequest.php`.
+- `tests/Feature/FocusTest.php`.
+
+File diubah:
+
+- `app/Models/Presence.php`: `focus_since` fillable dan cast `datetime`.
+- `app/Http/Controllers/PresenceController.php`: method `focus`.
+- `routes/api.php`: `PUT /api/focus`.
+- `app/Support/PresenceRecorder.php`: `focus_since` dikosongkan saat keluar.
+- `app/Events/PresenceChanged.php`, `app/Http/Resources/PresenceResource.php`: field `focus`.
+- `app/Http/Controllers/AgentController.php`: balasan heartbeat tanpa pengumuman selama fokus.
+- `tests/Feature/RealtimeTest.php`: payload `PresenceChanged` berisi `focus`.
+
+Tes: `php artisan test` untuk Focus, Realtime, Heartbeat, Presence, Interaction, dan Simulasi lulus (49 tes, 4 baru), `pint` bersih. `php artisan migrate` dijalankan di database lokal.
+
+### 2026-11-12 · Antrean bantuan dan share layar sukarela (Fitur B)
+
+Peserta yang angkat tangan dan sudah ditangani bisa membagikan layarnya sendiri ke yang menangani, memakai tabel dan alur WebRTC lihat layar tanpa langkah ketua kelas. Daftar presence membawa penanganan dan waktu angkat tangan untuk antrean di web.
+
+File baru:
+
+- `database/migrations/2026_11_12_090000_add_help_request_id_to_screen_sessions_table.php`: kolom `screen_sessions.help_request_id`.
+
+File diubah:
+
+- `app/Http/Controllers/ScreenSessionController.php`: method `share`; `index` tidak menampilkan share sukarela orang lain ke ketua kelas.
+- `routes/api.php`: `POST /api/help-requests/{id}/screen-session`.
+- `app/Models/ScreenSession.php`: `help_request_id` fillable, relasi `helpRequest`, `audience()` tanpa ketua untuk share sukarela.
+- `app/Policies/ScreenSessionPolicy.php`: ketua kelas tidak bisa menghentikan share sukarela orang lain.
+- `app/Http/Resources/ScreenSessionResource.php`: field `help_request_id`.
+- `app/Http/Controllers/HelpRequestController.php`: bantuan `selesai` menutup share sukarelanya.
+- `app/Events/HelpRequested.php`: field `created_at`.
+- `app/Http/Resources/PresenceResource.php`, `app/Http/Controllers/PresenceController.php`: `help_request.handled_by` dan `help_request.created_at`.
+- `tests/Feature/ScreenSessionTest.php`: 2 tes share sukarela. `tests/Feature/InteractionTest.php`: field baru di presence dan event.
+
+Tes: `php artisan test` untuk ScreenSession, Interaction, Presence, dan Realtime lulus (42 tes, 2 baru), `pint --test` bersih. `php artisan migrate` dijalankan di database lokal.
+
+### 2026-11-18 · Progresku (Fitur B)
+
+`GET /api/progress` untuk akun yang sedang login saja; tidak ada parameter user, jadi peserta lain, ketua kelas, dan koordinator tidak bisa membuka progres orang lain. Rekap staf tetap lewat `/api/users/{id}/activity`.
+
+```json
+{ "data": {
+  "days": [{ "date": "2026-11-16", "aktif": 6600, "ngoding": 5400 }],
+  "streak": { "sekarang": 4, "terbaik": 4 }
+} }
+```
+
+- `days`: 90 hari terakhir, cuma hari yang ada datanya, dalam detik. `aktif` = waktu `di_kelas` (istirahat tidak dihitung). `ngoding` = bagian `aktif` dengan activity ngoding, vibe_coding, atau ngolah_data. Sesi yang masih jalan dihitung sampai sekarang. Hari diambil dari `started_at`.
+- `streak`: hari aktif berturut-turut sampai hari ini. Hari tanpa jadwal `kelas` di kelas mana pun milik peserta (misalnya akhir pekan) tidak memutus, dan hari ini yang belum aktif juga belum memutus. Peserta tanpa jadwal: semua hari dihitung.
+
+File baru:
+
+- `app/Support/Progress.php`: `perDay` dan `streak`, dipisah dari controller supaya bisa dipakai XP nanti.
+- `tests/Feature/ProgressTest.php`: 3 tes (jam per hari termasuk sesi berjalan, streak lewat akhir pekan dan hari ini, akun lain kosong).
+
+File diubah:
+
+- `app/Http/Controllers/UserController.php`: method `progress`.
+- `routes/api.php`: `GET /api/progress`.
+
+Tes: `php artisan test tests/Feature/ProgressTest.php` lulus (3 tes), `pint --test` bersih.
+
+### 2026-11-18 · XP dan aksesoris (Fitur B)
+
+XP dan level dihitung dari `activity_sessions` setiap kali diminta, tanpa tabel. Aksesoris yang dipakai disimpan di `users.avatar.aksesoris` (`{topi, meja}`), jadi ikut terbawa ke `/api/me` dan `user.avatar` di presence.
+
+- XP = menit ngoding (ngoding, vibe_coding, ngolah_data, cuma waktu `di_kelas`) × 1, ditambah streak terbaik × 20. Keduanya tidak pernah turun, jadi XP dan level juga tidak turun.
+- Level L butuh `50 × L × (L − 1)` XP: level 2 di 100, 3 di 300, 4 di 600, 5 di 1000. Angkanya di `config/kelas3d.php` bagian `xp`.
+- Katalog di `config/kelas3d.php` bagian `aksesoris`: `topi_1` Topi pet (level 2), `meja_1` Mug (3), `topi_2` Kupluk (4), `meja_2` Tanaman kecil (5). Id-nya disiapkan jadi nama objek Blender nanti.
+- `GET /api/progress` sekarang juga membawa `xp: {total, level, dari, ke}`, `aksesoris` (katalog plus `terbuka`), dan `dipakai: {topi, meja}`.
+- `PUT /api/aksesoris` dengan body `{topi, meja}` (id atau `null`, dua-duanya wajib ada) untuk akun sendiri. Ditolak 422 kalau id bukan untuk slot itu, belum terbuka di level sekarang, atau avatar belum dipilih. Balasannya `UserResource`.
+- `PATCH /api/users/{id}/avatar` tidak menghapus aksesoris yang sudah dipakai.
+- Ganti aksesoris tidak mengirim event realtime, sama seperti ganti avatar: orang lain melihatnya sesudah memuat ulang presence.
+
+File baru:
+
+- `app/Http/Requests/AksesorisRequest.php`.
+
+File diubah:
+
+- `config/kelas3d.php`: bagian `xp` dan `aksesoris`.
+- `app/Support/Progress.php`: `xp` dan `level`.
+- `app/Http/Controllers/UserController.php`: `progress` membawa XP dan aksesoris, method baru `aksesoris`, dan `updateAvatar` mempertahankan aksesoris.
+- `routes/api.php`: `PUT /api/aksesoris`.
+- `tests/Feature/ProgressTest.php`: 3 tes baru (XP dan level, pakai aksesoris dan batas level, avatar belum dipilih).
+
+Tes: `php artisan test tests/Feature/ProgressTest.php tests/Feature/AvatarTest.php` lulus (10 tes), `pint --test` bersih.
