@@ -72,3 +72,9 @@ test('me berisi user beserta kelas dan role-nya', function () {
 test('tamu tidak bisa membuka me', function () {
     $this->getJson('/api/me')->assertUnauthorized();
 });
+
+test('tamu yang membuka api dari tab browser dapat 401 json, bukan redirect', function () {
+    $this->get('/api/me', ['Accept' => 'text/html'])
+        ->assertUnauthorized()
+        ->assertJson(['message' => 'Unauthenticated.']);
+});

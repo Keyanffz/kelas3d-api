@@ -1138,3 +1138,14 @@ File diubah:
 - `tests/Feature/ProgressTest.php`: 3 tes baru (XP dan level, pakai aksesoris dan batas level, avatar belum dipilih).
 
 Tes: `php artisan test tests/Feature/ProgressTest.php tests/Feature/AvatarTest.php` lulus (10 tes), `pint --test` bersih.
+
+### 2026-11-18 · Deploy dan 401 untuk tamu
+
+Production jalan di `https://kelas3d.keynaffz.my.id` (VPS, satu domain bersama web dan Reverb; susunannya di `docs/rencana-kelas3d.md`, Keputusan deploy). Setelah online ketahuan tamu yang membuka `/api/...` langsung dari tab browser (tanpa `Accept: application/json`) dapat 500 `Route [login] not defined`, karena middleware auth mencoba redirect ke rute `login` yang memang tidak ada di API. Web dan agent tidak kena karena selalu mengirim header JSON.
+
+File diubah:
+
+- `bootstrap/app.php`: `redirectGuestsTo(null)`, jadi tamu selalu dapat 401 JSON.
+- `tests/Feature/AuthTest.php`: tes tamu dengan `Accept: text/html` dapat 401 JSON.
+
+Tes: tes baru gagal tanpa perubahan dan lulus dengannya; `php artisan test` lulus semua (142 tes), `pint --test` bersih.

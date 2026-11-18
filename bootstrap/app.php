@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         // Request dari domain frontend dapat sesi dan CSRF (Sanctum SPA).
         $middleware->statefulApi();
+        // Halaman login ada di web, bukan di sini. Tanpa ini tamu yang membuka /api langsung dapat 500.
+        $middleware->redirectGuestsTo(null);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(
