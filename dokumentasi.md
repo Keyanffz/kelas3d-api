@@ -1149,3 +1149,14 @@ File diubah:
 - `tests/Feature/AuthTest.php`: tes tamu dengan `Accept: text/html` dapat 401 JSON.
 
 Tes: tes baru gagal tanpa perubahan dan lulus dengannya; `php artisan test` lulus semua (142 tes), `pint --test` bersih.
+
+### 2026-11-18 · `users/me` hilang setelah `route:cache`
+
+Di production, simpan avatar (`PATCH /api/users/me/avatar`) dibalas 404 "Data tidak ditemukan.". `Route::bind('user', ...)` yang mengubah `me` jadi user yang login ada di `routes/api.php`, dan file itu tidak dibaca lagi setelah `php artisan optimize` meng-cache route, jadi `me` dicari sebagai id. `/api/users/me/activity` kena hal yang sama.
+
+File diubah:
+
+- `app/Providers/AppServiceProvider.php`: `Route::bind('user', ...)` dipindah ke `boot`.
+- `routes/api.php`: bind dan import `User` yang tidak terpakai dihapus.
+
+Tes: MariaDB lokal sedang mati, jadi tes dijalankan dengan `DB_CONNECTION=sqlite DB_DATABASE=:memory:`. `AvatarTest` dengan `route:cache` sebelumnya 404, sekarang lulus; seluruh tes dengan dan tanpa `route:cache` 141 lulus. Satu yang gagal (`ScheduleTest` › koordinator menambah jadwal) juga gagal sebelum perubahan, karena format jam di SQLite; dengan MariaDB lulus. `pint --test` bersih.

@@ -16,11 +16,7 @@ use App\Http\Controllers\ScreenSessionController;
 use App\Http\Controllers\UserController;
 use App\Http\Middleware\EnsureDeviceApproved;
 use App\Models\Classroom;
-use App\Models\User;
 use Illuminate\Support\Facades\Route;
-
-// users/me/... merujuk ke user yang sedang login.
-Route::bind('user', fn (string $value) => $value === 'me' ? request()->user() : User::findOrFail($value));
 
 Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
 Route::post('login/link', [AuthController::class, 'loginWithLink'])->middleware('throttle:10,1');
