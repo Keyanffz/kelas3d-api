@@ -25,6 +25,7 @@ class PresenceFactory extends Factory
             'state' => PresenceState::DiKelas,
             'activity' => Activity::Ngoding,
             'app_label' => 'VS Code',
+            'app_since' => now(),
             'last_heartbeat_at' => now(),
             'state_since' => now(),
         ];

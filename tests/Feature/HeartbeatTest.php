@@ -139,7 +139,7 @@ test('aplikasi lain yang terbuka disimpan tanpa membuka sesi baru dan dikosongka
     $this->travel(10)->seconds();
     $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => [$apps[0]]]))->assertOk();
 
-    expect(Presence::find($this->peserta->id)->open_apps)->toBe([$apps[0]])
+    expect(Presence::find($this->peserta->id)->open_apps)->toBe([[...$apps[0], 'since' => '2026-11-09T09:00:00+07:00']])
         ->and(ActivitySession::count())->toBe(1);
 
     // Agent lama tanpa open_apps, lalu keluar jaringan kelas.
@@ -150,6 +150,35 @@ test('aplikasi lain yang terbuka disimpan tanpa membuka sesi baru dan dikosongka
     $this->travel(10)->seconds();
     $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => $apps, 'local_ip' => '10.0.0.5']))->assertOk();
     expect(Presence::find($this->peserta->id)->open_apps)->toBeNull();
+});
+
+test('lama aplikasi terbuka ikut pindah antara fokus dan juga terbuka, lalu mulai dari nol kalau ditutup', function () {
+    $chrome = ['activity' => 'browsing', 'label' => 'Chrome'];
+    $vscode = ['activity' => 'ngoding', 'label' => 'VS Code'];
+    $presence = fn () => Presence::find($this->peserta->id);
+
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => [$chrome]]))->assertOk();
+    expect($presence()->app_since->toIso8601String())->toBe('2026-11-09T09:00:00+07:00');
+
+    // Chrome jadi fokus, VS Code turun ke daftar juga terbuka. Sejaknya tetap 09.00.
+    $this->travel(10)->minutes();
+    $this->postJson('/api/agent/heartbeat', laporan(['activity' => 'browsing', 'app_label' => 'Chrome', 'open_apps' => [$vscode]]))->assertOk();
+    expect($presence()->app_since->toIso8601String())->toBe('2026-11-09T09:00:00+07:00')
+        ->and($presence()->open_apps)->toBe([[...$vscode, 'since' => '2026-11-09T09:00:00+07:00']]);
+
+    // Chrome ditutup lalu dibuka lagi.
+    $this->travel(10)->seconds();
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => []]))->assertOk();
+    $this->travel(10)->seconds();
+    $this->postJson('/api/agent/heartbeat', laporan(['open_apps' => [$chrome]]))->assertOk();
+    expect($presence()->open_apps)->toBe([[...$chrome, 'since' => '2026-11-09T09:10:20+07:00']])
+        ->and($presence()->app_since->toIso8601String())->toBe('2026-11-09T09:00:00+07:00');
+
+    // Scheduler yang memeriksa presence tanpa heartbeat tidak mengubah waktunya.
+    $this->travel(3)->minutes();
+    $this->artisan('presences:check')->assertSuccessful();
+    expect($presence()->state)->toBe(PresenceState::Istirahat)
+        ->and($presence()->open_apps[0]['since'])->toBe('2026-11-09T09:10:20+07:00');
 });
 
 test('config agent berisi jadwal kelas dan app_rules aktif untuk OS laptop', function () {

@@ -1160,3 +1160,22 @@ File diubah:
 - `routes/api.php`: bind dan import `User` yang tidak terpakai dihapus.
 
 Tes: MariaDB lokal sedang mati, jadi tes dijalankan dengan `DB_CONNECTION=sqlite DB_DATABASE=:memory:`. `AvatarTest` dengan `route:cache` sebelumnya 404, sekarang lulus; seluruh tes dengan dan tanpa `route:cache` 141 lulus. Satu yang gagal (`ScheduleTest` › koordinator menambah jadwal) juga gagal sebelum perubahan, karena format jam di SQLite; dengan MariaDB lulus. `pint --test` bersih.
+
+### 2026-11-19 · Lama aplikasi terbuka
+
+Permintaan dosen: koordinator dan ketua kelas bisa melihat sudah berapa lama tiap aplikasi dibuka. Dihitung di `PresenceRecorder` dari heartbeat, tanpa perubahan agent. Aplikasi yang masih terlihat membawa waktu pertamanya, termasuk saat pindah antara fokus dan `open_apps`; yang hilang lalu muncul lagi mulai dari nol; semuanya kosong saat keluar. Aplikasi yang dibuka sebelum jam kelas terhitung sejak agent mulai melapor.
+
+File baru:
+
+- `database/migrations/2026_11_19_090000_add_app_since_to_presences_table.php`: kolom `presences.app_since`.
+
+File diubah:
+
+- `app/Support/PresenceRecorder.php`: `app_since` masuk `REPORT`, `stampApps` mengisi `app_since` dan `since` di tiap `open_apps`.
+- `app/Models/Presence.php`: fillable dan cast `app_since`.
+- `app/Http/Resources/PresenceResource.php`: `app_since` untuk staf (`open_apps` sudah membawa `since`).
+- `database/factories/PresenceFactory.php`: `app_since` bawaan, seperti presence yang sudah pernah dapat heartbeat.
+- `tests/Feature/HeartbeatTest.php`: tes baru waktu aplikasi pindah fokus, ditutup lalu dibuka lagi, dan tetap saat scheduler jalan; tes `open_apps` lama ikut memeriksa `since`.
+
+Tes: MariaDB lokal mati, jadi pakai `DB_CONNECTION=sqlite DB_DATABASE=:memory:`. Heartbeat, Presence, Realtime, Simulasi, Focus, dan DeviceLogin lulus (49 tes), `pint --test` bersih. Sesudah MariaDB lokal nyala: migration dijalankan di lokal dan `php artisan test` lulus semua (143 tes). Migration di VPS belum dijalankan.
+

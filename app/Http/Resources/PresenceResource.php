@@ -44,6 +44,7 @@ class PresenceResource extends JsonResource
             ] : null,
             // Detail kerjaan cuma untuk koordinator dan ketua kelas.
             $this->mergeWhen($request->user()->can('manageMembers', $this->classroom), fn () => [
+                'app_since' => $here?->app_since,
                 'project' => $here?->project,
                 'file_name' => $here?->file_name,
                 'language' => $here?->language,
